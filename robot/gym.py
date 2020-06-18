@@ -22,6 +22,7 @@ _TIME_RANGE = {
     '8': '17:35 - 19:00',
 }
 _PRIORITY = (str(i) for i in (4, 5, 6, 7, 3, 2, 8, 1))
+_DAY_FMT = '%Y-%m-%d'
 
 
 class GymBookingWorker(Worker):
@@ -79,22 +80,28 @@ class GymBookingWorker(Worker):
 
     def do_reserve(self, day):
         path = self.base_url + '/api/v1/createGymRegForm'
-        # TODO: hard code here
-        target_time = '1'
-        payload = {
-            'reg_date': day,
-            'reg_schedule_id': target_time,
-            'reg_mobile': self.phone,
-            'reg_ssoid': self.sso,
-            'reg_status': True,
-            'reg_username': self.name
-        }
-        with requests.Session() as s:
-            resp = s.post(path, json=payload)
-            if resp.status_code != 200:
-                return False
-            result = resp.json()
-            return result.get('result', 'error') == 'done'
+        d = datetime.datetime.strptime(day, _DAY_FMT)
+        # weekday() is an integer, where Monday is 0 and Sunday is 6
+        if d.workday() == 1:
+            prefer_times = _PRIORITY[1:]
+        prefer_times = _PRIORITY
+
+        for target_time in prefer_times:
+            payload = {
+                'reg_date': day,
+                'reg_schedule_id': target_time,
+                'reg_mobile': self.phone,
+                'reg_ssoid': self.sso,
+                'reg_status': True,
+                'reg_username': self.name
+            }
+            with requests.Session() as s:
+                resp = s.post(path, json=payload)
+                if resp.status_code != 200:
+                    return False
+                result = resp.json()
+                return result.get('result', 'error') == 'done'
+        return False
 
     def check_available(self, day):
         LOGGER.debug('check whether %s is available', day)
@@ -113,11 +120,10 @@ class GymBookingWorker(Worker):
 
 
 def day_window(days=14):
-    _fmt = '%Y-%m-%d'
     day = datetime.datetime.today()
     max_day = day + datetime.timedelta(days=days)
-    days = [day.strftime(_fmt)]
+    days = [day.strftime(_DAY_FMT)]
     while day < max_day:
         day = day + datetime.timedelta(days=1)
-        days.append(day.strftime(_fmt))
+        days.append(day.strftime(_DAY_FMT))
     return days
