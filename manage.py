@@ -32,10 +32,12 @@ def parse_args():
     parser = argparse.ArgumentParser('manage.py')
     subparsers = parser.add_subparsers(help='sub-command help')
 
+    # `gym` sub-command.
     gym_parser = subparsers.add_parser('gym', help='gym booking robot')
     gym_parser.add_argument('task', choices=('show', 'book'), default='show', help='task name')
     gym_parser.add_argument('--config', default='cfg.yml', help='path to the configuration file')
-    gym_parser.add_argument('days', nargs='*', help='target reverse day')
+    gym_parser.add_argument('days', nargs='*', help='target days to reverse gym')
+    gym_parser.add_argument('-f', '--force', help='do force reservation', action='store_true')
     gym_parser.add_argument('-L', '--level', choices=('debug', 'info', 'warn'), default='info',
                             help='log level: debug, info, warn')
     gym_parser.set_defaults(func=run_gym)
@@ -75,7 +77,7 @@ def run_gym(args):
     LOGGER.info('initialize gym booking worker')
     worker = GymBookingWorker(**cfg['gym'])
 
-    worker.execute(args.task, days=args.days)
+    worker.execute(args.task, days=args.days, force=args.force)
 
 
 def main():
