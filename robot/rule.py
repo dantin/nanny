@@ -3,8 +3,10 @@
 import abc
 import datetime
 
-from .gym import _DAY_FMT
 from .exceptions import BusinessException
+
+
+_DAY_FMT = '%Y-%m-%d'
 
 
 class Rule():

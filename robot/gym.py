@@ -7,28 +7,16 @@ import requests
 
 from .exceptions import BusinessException
 from .worker import Worker
+from .rule import GymRule, _DAY_FMT
 
 
 LOGGER = logging.getLogger(__name__)
-
-_TIME_RANGE = {
-    '1': '06:30 - 07:50',
-    '2': '08:05 - 09:25',
-    '3': '09:40 - 11:00',
-    '4': '11:15 - 12:35',
-    '5': '12:50 - 14:10',
-    '6': '14:25 - 15:45',
-    '7': '16:00 - 17:20',
-    '8': '17:35 - 19:00',
-}
-_PRIORITY = (str(i) for i in (4, 5, 6, 7, 3, 2, 8, 1))
-_DAY_FMT = '%Y-%m-%d'
 
 
 class GymBookingWorker(Worker):
     """GymBookingWorker is a robot that used to booking Gym."""
 
-    def __init__(self, base_url, sso, name, phone):
+    def __init__(self, base_url, sso, name, phone, rule):
         super().__init__()
 
         LOGGER.debug('build GymBookingWorker')
@@ -36,6 +24,7 @@ class GymBookingWorker(Worker):
         self.sso = sso
         self.name = name
         self.phone = phone
+        self.rule = GymRule(**rule)
 
     def execute(self, task_name, **kwargs):
         if task_name == 'book':
@@ -91,13 +80,8 @@ class GymBookingWorker(Worker):
         LOGGER.debug('reverse gym on "%s"', day)
 
         path = self.base_url + '/api/v1/createGymRegForm'
-        d = datetime.datetime.strptime(day, _DAY_FMT)
-        # weekday() is an integer, where Monday is 0 and Sunday is 6
-        if d.weekday() == 1:
-            prefer_times = _PRIORITY[1:]
-        prefer_times = _PRIORITY
 
-        for target_time in prefer_times:
+        for target_time in self.rule.all(day=day):
             payload = {
                 'reg_date': day,
                 'reg_schedule_id': target_time,
