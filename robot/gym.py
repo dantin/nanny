@@ -41,7 +41,9 @@ class GymBookingWorker(Worker):
         if task_name == 'book':
             LOGGER.info('reserve for "%s"', self.sso)
             target_days = kwargs.get('days', [])
-            self.reserve(target_days)
+            ok = self.reserve(target_days)
+            if ok:
+                print('ok')
             return
 
         LOGGER.info('list reservation')
@@ -77,10 +79,13 @@ class GymBookingWorker(Worker):
         else:
             todo_days = [d for d in target_days if is_valid_date(d) and self.check_available(d)]
 
+        ret_val = True
         for day in todo_days:
             ok = self.do_reserve(day)
             if ok:
                 LOGGER.info('gym on %s has been reserved for "%s"', day, self.sso)
+            ret_val = ret_val and ok
+        return ret_val
 
     def do_reserve(self, day):
         LOGGER.debug('reverse gym on "%s"', day)
