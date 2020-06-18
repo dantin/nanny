@@ -40,7 +40,8 @@ class GymBookingWorker(Worker):
     def execute(self, task_name, **kwargs):
         if task_name == 'book':
             LOGGER.info('reserve for "%s"', self.sso)
-            self.reserve()
+            target_days = kwargs.get('days', [])
+            self.reserve(target_days)
             return
 
         LOGGER.info('list reservation')
@@ -63,15 +64,18 @@ class GymBookingWorker(Worker):
         for r in records:
             LOGGER.info('"%s %s"', r['reg_date'], r['reg_schedule_detail'])
 
-    def reserve(self):
-        days = day_window()
-        available_days = [d for d in days if self.check_available(d)]
-        reserved_days = [item['reg_date'] for item in self.list_reservation()]
+    def reserve(self, target_days):
+        if not target_days:
+            days = day_window()
+            available_days = [d for d in days if self.check_available(d)]
+            reserved_days = [item['reg_date'] for item in self.list_reservation()]
 
-        if reserved_days:
-            todo_days = [d for d in available_days if d > max(reserved_days)]
+            if reserved_days:
+                todo_days = [d for d in available_days if d > max(reserved_days)]
+            else:
+                todo_days = available_days
         else:
-            todo_days = available_days
+            todo_days = [d for d in target_days if is_valid_date(d) and self.check_available(d)]
 
         for day in todo_days:
             ok = self.do_reserve(day)
@@ -79,10 +83,12 @@ class GymBookingWorker(Worker):
                 LOGGER.info('gym on %s has been reserved for "%s"', day, self.sso)
 
     def do_reserve(self, day):
+        LOGGER.debug('reverse gym on "%s"', day)
+
         path = self.base_url + '/api/v1/createGymRegForm'
         d = datetime.datetime.strptime(day, _DAY_FMT)
         # weekday() is an integer, where Monday is 0 and Sunday is 6
-        if d.workday() == 1:
+        if d.weekday() == 1:
             prefer_times = _PRIORITY[1:]
         prefer_times = _PRIORITY
 
@@ -127,3 +133,11 @@ def day_window(days=14):
         day = day + datetime.timedelta(days=1)
         days.append(day.strftime(_DAY_FMT))
     return days
+
+
+def is_valid_date(day):
+    try:
+        d = datetime.datetime.strptime(day, _DAY_FMT)
+        return d > datetime.datetime.now()
+    except ValueError:
+        return False
