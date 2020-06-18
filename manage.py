@@ -77,7 +77,7 @@ def run_gym(args):
     LOGGER.info('initialize gym booking worker')
     worker = GymBookingWorker(**cfg['gym'])
 
-    worker.execute(args.task, days=args.days)
+    worker.execute(args.task, days=args.days, force=args.force)
 
 
 def main():

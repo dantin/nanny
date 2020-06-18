@@ -5,6 +5,7 @@ import logging
 
 import requests
 
+from .config import load_state, save_state
 from .exceptions import BusinessException
 from .worker import Worker
 from .rule import GymRule, _DAY_FMT
@@ -27,17 +28,33 @@ class GymBookingWorker(Worker):
         self.rule = GymRule(**rule)
 
     def execute(self, task_name, **kwargs):
+        force = kwargs.get('force', False)
         if task_name == 'book':
+            cmd = '{}_{}'.format('gym', task_name)
+            if not force and self._is_success(cmd):
+                LOGGER.info('has already run with success, ignore')
+                return
             LOGGER.info('reserve for "%s"', self.sso)
             target_days = kwargs.get('days', [])
             ok = self._reserve(target_days)
-            if ok:
-                print('ok')
+            if force or ok:
+                self._dump_state(cmd)
             return
 
         LOGGER.info('list reservation')
         records = self._list_reservation()
         self._show_reservation(records)
+
+    def _is_success(self, cmd):
+        state = load_state(cmd)
+        if 'last_success_time' not in state:
+            return False
+        timestamp = state['last_success_time']
+        return timestamp == datetime.datetime.now().strftime(_DAY_FMT)
+
+    def _dump_state(self, cmd):
+        state = {'last_success_time': datetime.datetime.now().strftime(_DAY_FMT)}
+        save_state(cmd, state)
 
     def _list_reservation(self):
         path = self.base_url + '/api/v1/getLastGymRegFormsBySSO'
