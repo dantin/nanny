@@ -41,16 +41,16 @@ class GymBookingWorker(Worker):
         if task_name == 'book':
             LOGGER.info('reserve for "%s"', self.sso)
             target_days = kwargs.get('days', [])
-            ok = self.reserve(target_days)
+            ok = self._reserve(target_days)
             if ok:
                 print('ok')
             return
 
         LOGGER.info('list reservation')
-        records = self.list_reservation()
-        self.show_reservation(records)
+        records = self._list_reservation()
+        self._show_reservation(records)
 
-    def list_reservation(self):
+    def _list_reservation(self):
         path = self.base_url + '/api/v1/getLastGymRegFormsBySSO'
         payload = {'sso': self.sso}
         with requests.Session() as s:
@@ -60,34 +60,34 @@ class GymBookingWorker(Worker):
             return [item for item in sorted(resp.json().get('data', []),
                                             key=lambda x: x['reg_date'])]
 
-    def show_reservation(self, records):
+    def _show_reservation(self, records):
         LOGGER.info('reservation of "%s"', self.sso)
 
         for r in records:
             LOGGER.info('"%s %s"', r['reg_date'], r['reg_schedule_detail'])
 
-    def reserve(self, target_days):
+    def _reserve(self, target_days):
         if not target_days:
             days = day_window()
-            available_days = [d for d in days if self.check_available(d)]
-            reserved_days = [item['reg_date'] for item in self.list_reservation()]
+            available_days = [d for d in days if self._check_available(d)]
+            reserved_days = [item['reg_date'] for item in self._list_reservation()]
 
             if reserved_days:
                 todo_days = [d for d in available_days if d > max(reserved_days)]
             else:
                 todo_days = available_days
         else:
-            todo_days = [d for d in target_days if is_valid_date(d) and self.check_available(d)]
+            todo_days = [d for d in target_days if is_valid_date(d) and self._check_available(d)]
 
         ret_val = True
         for day in todo_days:
-            ok = self.do_reserve(day)
+            ok = self._do_reserve(day)
             if ok:
                 LOGGER.info('gym on %s has been reserved for "%s"', day, self.sso)
             ret_val = ret_val and ok
         return ret_val
 
-    def do_reserve(self, day):
+    def _do_reserve(self, day):
         LOGGER.debug('reverse gym on "%s"', day)
 
         path = self.base_url + '/api/v1/createGymRegForm'
@@ -114,7 +114,7 @@ class GymBookingWorker(Worker):
                 return result.get('result', 'error') == 'done'
         return False
 
-    def check_available(self, day):
+    def _check_available(self, day):
         LOGGER.debug('check whether %s is available', day)
         path = self.base_url + '/api/v1/checkDate'
         payload = {'date': day}
@@ -125,7 +125,7 @@ class GymBookingWorker(Worker):
             result = resp.json()
             return result.get('result', 'error') == 'ok'
 
-    def cancel(self):
+    def _cancel(self):
         path = self.base_url + '/api/v1/cancelGymRegList'
         print(path)
 
