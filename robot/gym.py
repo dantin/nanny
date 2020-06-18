@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import datetime
 import logging
 
 import requests
@@ -9,6 +10,19 @@ from .worker import Worker
 
 
 LOGGER = logging.getLogger(__name__)
+
+_TIME_RANGE = {
+    '1': '06:30 - 07:50',
+    '2': '08:05 - 09:25',
+    '3': '09:40 - 11:00',
+    '4': '11:15 - 12:35',
+    '5': '12:50 - 14:10',
+    '6': '14:25 - 15:45',
+    '7': '16:00 - 17:20',
+    '8': '17:35 - 19:00',
+}
+_PRIORITY = (str(i) for i in (4, 5, 6, 7, 3, 2, 8, 1))
+_DAY_FMT = '%Y-%m-%d'
 
 
 class GymBookingWorker(Worker):
@@ -23,54 +37,93 @@ class GymBookingWorker(Worker):
         self.name = name
         self.phone = phone
 
-    def next_reservation():
-        pass
-
     def execute(self, task_name, **kwargs):
-        if task_name == 'booking':
-            pass
-        else:
-            records = self.do_list_reservation()
-            self.list_reservation(records)
+        if task_name == 'book':
+            LOGGER.info('reserve for "%s"', self.sso)
+            self.reserve()
+            return
 
-    def do_list_reservation(self):
+        LOGGER.info('list reservation')
+        records = self.list_reservation()
+        self.show_reservation(records)
+
+    def list_reservation(self):
         path = self.base_url + '/api/v1/getLastGymRegFormsBySSO'
         payload = {'sso': self.sso}
-        resp = requests.get(path, payload)
-        if resp.status_code != 200:
-            raise BusinessException('fail to get reservation information')
-        return resp.json()['data']
+        with requests.Session() as s:
+            resp = s.get(path, params=payload)
+            if resp.status_code != 200:
+                raise BusinessException('fail to get reservation information')
+            return [item for item in sorted(resp.json().get('data', []),
+                                            key=lambda x: x['reg_date'])]
 
-    def list_reservation(self, records):
-        LOGGER.info('list reservation information of %s', self.sso)
+    def show_reservation(self, records):
+        LOGGER.info('reservation of "%s"', self.sso)
 
-        for r in sorted(records, key=lambda x: x['reg_date']):
+        for r in records:
             LOGGER.info('"%s %s"', r['reg_date'], r['reg_schedule_detail'])
+
+    def reserve(self):
+        days = day_window()
+        available_days = [d for d in days if self.check_available(d)]
+        reserved_days = [item['reg_date'] for item in self.list_reservation()]
+
+        if reserved_days:
+            todo_days = [d for d in available_days if d > max(reserved_days)]
+        else:
+            todo_days = available_days
+
+        for day in todo_days:
+            ok = self.do_reserve(day)
+            if ok:
+                LOGGER.info('gym on %s has been reserved for "%s"', day, self.sso)
 
     def do_reserve(self, day):
         path = self.base_url + '/api/v1/createGymRegForm'
-        # TODO: hard code here
-        time_range = '1'
-        payload = {
-            'reg_date': day,
-            'reg_schedule_id': time_range,
-            'reg_mobile': self.phone,
-            'reg_ssoid': self.sso,
-            'reg_status': True,
-            'reg_username': self.name
-        }
-        r = requests.post(path, json=payload)
-        result = r.json()
+        d = datetime.datetime.strptime(day, _DAY_FMT)
+        # weekday() is an integer, where Monday is 0 and Sunday is 6
+        if d.workday() == 1:
+            prefer_times = _PRIORITY[1:]
+        prefer_times = _PRIORITY
 
-        return result['result'] == 'done'
+        for target_time in prefer_times:
+            payload = {
+                'reg_date': day,
+                'reg_schedule_id': target_time,
+                'reg_mobile': self.phone,
+                'reg_ssoid': self.sso,
+                'reg_status': True,
+                'reg_username': self.name
+            }
+            with requests.Session() as s:
+                resp = s.post(path, json=payload)
+                if resp.status_code != 200:
+                    return False
+                result = resp.json()
+                return result.get('result', 'error') == 'done'
+        return False
 
-    def check_date(self, day):
+    def check_available(self, day):
+        LOGGER.debug('check whether %s is available', day)
         path = self.base_url + '/api/v1/checkDate'
         payload = {'date': day}
-        r = requests.get(path, payload)
-        result = r.json()
-        return result['status'] == 'ok'
+        with requests.Session() as s:
+            resp = s.get(path, params=payload)
+            if resp.status_code != 200:
+                return False
+            result = resp.json()
+            return result.get('result', 'error') == 'ok'
 
     def cancel(self):
         path = self.base_url + '/api/v1/cancelGymRegList'
         print(path)
+
+
+def day_window(days=14):
+    day = datetime.datetime.today()
+    max_day = day + datetime.timedelta(days=days)
+    days = [day.strftime(_DAY_FMT)]
+    while day < max_day:
+        day = day + datetime.timedelta(days=1)
+        days.append(day.strftime(_DAY_FMT))
+    return days
