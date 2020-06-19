@@ -17,10 +17,12 @@ def print_version(args):
     print('Tools of robot, version ', __version__)
 
 
-def init():
-    """init runs initialization tasks."""
-    # logging setup.
-    default_handler = logging.StreamHandler()
+def setup_logs(file_path=''):
+    """setup_logs setup logging."""
+    if not file_path:
+        default_handler = logging.StreamHandler()
+    else:
+        default_handler = logging.FileHandler('logging.log', mode='a')
     default_handler.setFormatter(logging.Formatter(
         '[%(asctime)s] %(levelname)s in %(module)s: %(message)s'
     ))
@@ -38,6 +40,7 @@ def parse_args():
     gym_parser.add_argument('--config', default='cfg.yml', help='path to the configuration file')
     gym_parser.add_argument('days', nargs='*', help='target days to reverse gym')
     gym_parser.add_argument('-f', '--force', help='do force reservation', action='store_true')
+    gym_parser.add_argument('-l', '--log_path', default='', help='log file path')
     gym_parser.add_argument('-L', '--level', choices=('debug', 'info', 'warn'), default='info',
                             help='log level: debug, info, warn')
     gym_parser.set_defaults(func=run_gym)
@@ -53,6 +56,7 @@ def parse_args():
 def logger(func):
     """logger decorator sets logger level."""
     def decorator(args):
+        setup_logs(args.log_path)
         level = args.level
         if level == 'debug':
             LOGGER.setLevel(logging.DEBUG)
@@ -88,5 +92,4 @@ def main():
 
 
 if __name__ == '__main__':
-    init()
     main()
