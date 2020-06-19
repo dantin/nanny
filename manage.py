@@ -22,7 +22,7 @@ def setup_logs(file_path=''):
     if not file_path:
         default_handler = logging.StreamHandler()
     else:
-        default_handler = logging.FileHandler('logging.log', mode='a')
+        default_handler = logging.FileHandler(file_path, mode='a')
     default_handler.setFormatter(logging.Formatter(
         '[%(asctime)s] %(levelname)s in %(module)s: %(message)s'
     ))
