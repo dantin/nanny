@@ -3,6 +3,8 @@
 import abc
 import datetime
 
+from collections import defaultdict
+
 from .exceptions import BusinessException
 
 
@@ -18,24 +20,38 @@ class Rule():
         """all returns rule items by priority."""
         pass
 
+    @abc.abstractmethod
+    def value(self, key):
+        """value returns rule detail value."""
+        pass
+
 
 class GymRule(Rule):
 
-    def __init__(self, time_slot, preference):
+    def __init__(self, time_slot, priority, special_cases=defaultdict()):
         super().__init__()
         self.time_slot = time_slot
-        priority = [i for i in preference if i in time_slot]
-        if not priority:
-            raise BusinessException('invalid gym rule setting')
-        self.preference = priority
+        default_case = [i for i in priority if i in time_slot]
+        if not default_case:
+            raise BusinessException('invalid priority in rule')
+        self.default_case = default_case
+        cases = {k: default_case[:] for k in range(7)}
+        for k, case in special_cases.items():
+            if k in cases:
+                valid_case = [i for i in case if i in time_slot]
+                if not valid_case:
+                    raise BusinessException('invalid special cases in rule')
+                cases[k] = valid_case
+        self.cases = cases
 
     def all(self, **kwargs):
         if 'day' not in kwargs:
-            return self.preference[:]
+            return self.default_case[:]
 
         day = kwargs['day']
         d = datetime.datetime.strptime(day, _DAY_FMT)
         # weekday() is an integer, where Monday is 0 and Sunday is 6
-        if d.weekday() == 1:
-            return self.preference[1:]
-        return self.preference[:]
+        return self.cases[d.weekday()][:]
+
+    def value(self, key):
+        return self.time_slot[key]

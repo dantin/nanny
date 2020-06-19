@@ -21,10 +21,16 @@ def time_slot():
 
 
 def test_rule(time_slot):
-    preference = [1, 2, 3, 4, 5, 6, 7, 8]
-    rule = GymRule(time_slot, preference)
-    assert len(rule.all()) == len(preference)
-    assert len(rule.all(day='2020-06-02')) == len(preference) - 1
+    priority = [i + 1 for i in range(8)]
+    rule = GymRule(time_slot, priority)
+    assert all([lhs == rhs for lhs, rhs in zip(rule.all(), priority)])
+    assert all([lhs == rhs for lhs, rhs in zip(rule.all(day='2020-06-02'), priority)])
+    # special case
+    case = [i + 1 for i in reversed(range(8))]
+    special_cases = {1: case}
+    rule = GymRule(time_slot, priority, special_cases)
+    assert all([lhs == rhs for lhs, rhs in zip(rule.all(), priority)])
+    assert all([lhs == rhs for lhs, rhs in zip(rule.all(day='2020-06-02'), case)])
 
 
 def test_bad_rule(time_slot):
