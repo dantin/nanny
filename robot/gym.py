@@ -87,9 +87,10 @@ class GymBookingWorker(Worker):
 
         ret_val = True
         for day in todo_days:
-            ok = self._do_reserve(day)
+            ok, key = self._do_reserve(day)
             if ok:
-                LOGGER.info('gym on %s has been reserved for "%s"', day, self.sso)
+                LOGGER.info('time %s on %s has been reserved for "%s"',
+                            self.rule.value(key), day, self.sso)
             ret_val = ret_val and ok
         return ret_val
 
@@ -98,10 +99,10 @@ class GymBookingWorker(Worker):
 
         path = self.base_url + '/api/v1/createGymRegForm'
 
-        for target_time in self.rule.all(day=day):
+        for val in self.rule.all(day=day):
             payload = {
                 'reg_date': day,
-                'reg_schedule_id': target_time,
+                'reg_schedule_id': val,
                 'reg_mobile': self.phone,
                 'reg_ssoid': self.sso,
                 'reg_status': True,
@@ -110,10 +111,10 @@ class GymBookingWorker(Worker):
             with requests.Session() as s:
                 resp = s.post(path, json=payload)
                 if resp.status_code != 200:
-                    return False
+                    return False, -1
                 result = resp.json()
-                return result.get('result', 'error') == 'done'
-        return False
+                return result.get('result', 'error') == 'done', val
+        return False, -1
 
     def _check_available(self, day):
         LOGGER.debug('check whether %s is available', day)

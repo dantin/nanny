@@ -3,6 +3,7 @@
 
 import argparse
 import logging
+import sys
 
 from robot import __version__
 from robot.config import load_config_from_file
@@ -20,7 +21,7 @@ def print_version(args):
 def setup_logs(file_path=''):
     """setup_logs setup logging."""
     if not file_path:
-        default_handler = logging.StreamHandler()
+        default_handler = logging.StreamHandler(stream=sys.stdout)
     else:
         default_handler = logging.FileHandler(file_path, mode='a')
     default_handler.setFormatter(logging.Formatter(
