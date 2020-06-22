@@ -17,3 +17,8 @@ gym:
     # weekday() is an integer, where Monday is 0 and Sunday is 6
     special_cases:
       1: [5, 6, 7, 3, 2, 8, 1, 4]
+
+smh:
+  base_url: "http://127.0.0.1"
+  username: "admin"
+  password: "password"

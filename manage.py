@@ -8,6 +8,7 @@ import sys
 from robot import __version__
 from robot.config import load_config_from_file
 from robot.gym import GymBookingWorker
+from robot.smh import CogentWorker
 from robot.exceptions import BusinessException
 
 
@@ -46,6 +47,14 @@ def parse_args():
                             help='log level: debug, info, warn')
     gym_parser.set_defaults(func=run_gym)
 
+    smh_parser = subparsers.add_parser('smh', help='SMH robot')
+    smh_parser.add_argument('task', choices=('list',), default='list', help='task name')
+    smh_parser.add_argument('--config', default='cfg.yml', help='path to the configuration file')
+    smh_parser.add_argument('-l', '--log_path', default='', help='log file path')
+    smh_parser.add_argument('-L', '--level', choices=('debug', 'info', 'warn'), default='info',
+                            help='log level: debug, info, warn')
+    smh_parser.set_defaults(func=run_smh)
+
     parser.add_argument('-V', '--version', help='print version info', action='store_true')
     parser.set_defaults(func=print_version)
 
@@ -83,6 +92,17 @@ def run_gym(args):
     worker = GymBookingWorker(**cfg['gym'])
 
     worker.execute(args.task, days=args.days, force=args.force)
+
+
+@logger
+def run_smh(args):
+    LOGGER.info('load configuration')
+    cfg = load_config_from_file(args.config)
+
+    LOGGER.info('initialize SMH cogent worker')
+    worker = CogentWorker(**cfg['smh'])
+
+    worker.execute(args.task)
 
 
 def main():
