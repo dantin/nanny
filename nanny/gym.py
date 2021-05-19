@@ -3,16 +3,15 @@
 import datetime
 import logging
 import os
-from typing import Dict, List
+from typing import Any, Dict, Generator, List
 
 from nanny.config import NannyConfig, DATA_DIR
-from nanny.func import duration_in_day
+from nanny.funcs import serial_in_day
+from nanny.remote import list_reservation, do_reserve, check_day_available
 from nanny.state import State
-from nanny.utils.http import get, post
 
 
 logger = logging.getLogger(__name__)
-_DAY_FMT = '%Y-%m-%d'
 
 
 class GymState(State):
@@ -20,18 +19,19 @@ class GymState(State):
     def __init__(self, filename=os.path.join(DATA_DIR, 'gym_state.json')):
         super().__init__(filename)
 
-    def is_success(self, check_point=datetime.datetime.now().strftime(_DAY_FMT)):
+    def is_success(self, check_point=str(datetime.date.today())) -> bool:
         state = self.load()
         if 'last_success_time' not in state:
             return False
         return check_point == state['last_success_time']
 
-    def mark_success(self):
+    def mark_success(self) -> None:
         self.save(
-            {'last_success_time': datetime.datetime.now().strftime(_DAY_FMT)})
+            {'last_success_time': str(datetime.date.today())})
 
 
 def parse_time_slot(data: str) -> Dict[int, str]:
+    """parse_time_slot parse time schedule string to map."""
     if not data:
         return {}
     slots = [line for line in data.splitlines() if len(line.strip()) > 0]
@@ -39,21 +39,24 @@ def parse_time_slot(data: str) -> Dict[int, str]:
 
 
 def parse_priority(data: str) -> List[int]:
+    """parse_priority parse schedule preference priority."""
     if not data:
         return []
     return [int(i) for i in data.split(',')]
 
 
 class BookRule():
-
+    """BookRule is the booking rule of gym."""
     def __init__(self, priority: List[int]):
         self.priority = priority
 
-    def find(self):
+    def seq(self) -> Generator[int, None, None]:
+        """seq generates the preferred schedule id by priority."""
         # TODO: here we suppose the booking priority is always the same.
         # d = datetime.datetime.strptime(day, _DAY_FMT)
         # weekday() is an integer, where Monday is 0 and Sunday is 6
-        return self.priority[:]
+        for i in range(self.priority):
+            yield i
 
 
 class Task():
@@ -64,7 +67,7 @@ class Task():
         self.phone = phone
         self.rule = rule
 
-    def display(self):
+    def display(self) -> None:
         print(f' SSO: {self.sso}')
         print(f' Perfence: {self.rule.priority}')
 
@@ -96,60 +99,6 @@ class GymSetting():
         print('Scheduled for {} users'.format(len(self.tasks)))
 
 
-def day_window(days=7):
-    day = datetime.datetime.today()
-    max_day = day + datetime.timedelta(days=days)
-    days = [day.strftime(_DAY_FMT)]
-    while day < max_day:
-        day = day + datetime.timedelta(days=1)
-        days.append(day.strftime(_DAY_FMT))
-    return days
-
-
-def is_valid_date(day):
-    try:
-        d = datetime.datetime.strptime(day, _DAY_FMT)
-        return d > datetime.datetime.now()
-    except ValueError:
-        return False
-
-
-def _show_reservation(base_url: str, sso: str) -> None:
-    """Show remote reservation info of an user using SSO."""
-    reserved = _list_reservation(base_url, sso)
-    print(' Reserved Time')
-    for i, r in enumerate(reserved):
-        print(f'   {i + 1}. {r["reg_date"]} {r["reg_schedule_detail"]}')
-
-
-def _list_reservation(base_url: str, sso: str) -> List[str]:
-    url = f'{base_url}/api/v1/getLastGymRegFormsBySSO'
-    params = {'sso': sso}
-    data = get(url, params).get('data', [])
-    return [item for item in sorted(data, key=lambda x: x['reg_date'])]
-
-
-def _do_reserve(base_url: str, day: str, schedule_id: int, phone: str, sso: str, name: str) -> bool:
-    url = f'{base_url}/api/v1/createGymRegForm'
-    payload = {
-        'reg_date': day,
-        'reg_schedule_id': schedule_id,
-        'reg_mobile': phone,
-        'reg_ssoid': sso,
-        'reg_status': True,
-        'reg_username': name,
-    }
-    resp = post(url, payload)
-    return resp.get('result', 'error') == 'done'
-
-
-def _check_day_available(base_url: str, day: str) -> bool:
-    url = f'{base_url}/api/v1/checkDate'
-    params = {'date': day}
-    data = get(url, params)
-    return data.get('result', 'error') == 'ok'
-
-
 class GymBooker():
     """GymBooker is used to booking Gym."""
 
@@ -162,9 +111,15 @@ class GymBooker():
         logger.debug('show reservation')
         self.setting.display()
 
+        def show_reservation(records: List[Any]) -> None:
+            print(' Reserved Time')
+            for i, r in enumerate(records):
+                print(f'   {i + 1}. {r["day"]} {r["schedule"]}')
+
         for task in self.setting.tasks:
             task.display()
-            _show_reservation(self.setting.base_url, task.sso)
+            records = list_reservation(self.setting.base_url, task.sso)
+            show_reservation(records)
 
     def reserve(self, days: int, force=False) -> None:
         """Reserve book gym's time table."""
@@ -173,11 +128,14 @@ class GymBooker():
         if not force and state.is_success():
             logger.info('already run with success, ignore')
             return
+
         success = True
+        # find gym open day in the next n days.
+        available_days = [d for d in serial_in_day(duration_by_days=days) if check_day_available(
+            self.setting.base_url, d)]
         for task in self.setting.tasks:
-            available_days = [d for d in duration_in_day(days=days) if _check_day_available(
-                self.setting.base_url, d)]
-            reserved_days = [item['reg_date'] for item in _list_reservation(
+            # find reserved day.
+            reserved_days = [item['day'] for item in list_reservation(
                 self.setting.base_url, task.sso)]
 
             if reserved_days:
@@ -187,8 +145,8 @@ class GymBooker():
 
             for day in days:
                 ok = False
-                for schedule_id in task.rule.find():
-                    ok = _do_reserve(
+                for schedule_id in task.rule.seq():
+                    ok = do_reserve(
                         self.setting.base_url, day, schedule_id, task.phone, task.sso, task.name)
                     if ok:
                         logger.debug(
