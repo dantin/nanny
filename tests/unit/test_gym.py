@@ -7,8 +7,6 @@ from nanny.gym import GymState
 
 def test_state():
     gym_state = GymState()
-    assert gym_state
-
     name = 'xxx'
     gym_state.save({'name': name})
     state = gym_state.load()
