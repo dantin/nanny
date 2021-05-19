@@ -13,6 +13,9 @@ if 'NANNY_HOME' in os.environ:
 else:
     DATA_DIR = os.path.join(os.path.expanduser('~'), '.nanny')
 
+if not os.path.exists(DATA_DIR):
+    os.mkdir(DATA_DIR)
+
 
 class NannyConfig():
     """NannyConfig is the global configuration."""
