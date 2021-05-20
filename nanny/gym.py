@@ -55,7 +55,7 @@ class BookRule():
         # TODO: here we suppose the booking priority is always the same.
         # d = datetime.datetime.strptime(day, _DAY_FMT)
         # weekday() is an integer, where Monday is 0 and Sunday is 6
-        for i in range(self.priority):
+        for i in self.priority:
             yield i
 
 
